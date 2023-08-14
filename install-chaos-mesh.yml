@@ -1,0 +1,55 @@
+---  
+- name: install-chaos-mesh
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: login
+      register: login_result
+      shell: |
+        curl '{{ harvester_management_url }}/v3-public/localProviders/local?action=login' \
+          --data-raw '{"description":"UI session","responseType":"json","username":"{{ harvester_username }}","password":"{{ harvester_password }}"}' \
+          --compressed \
+          --insecure | jq --raw-output ".token" > token.txt    
+
+    - name: login stdout
+      debug:
+        msg: "{{ login_result.stdout }}"
+
+    - name: Obtain KubeConfig
+      register: obtain_kubeconfig_result
+      shell: |
+        TOKEN=$(cat token.txt)
+        echo $TOKEN
+        curl "{{ harvester_management_url }}/v1/management.cattle.io.clusters/local?action=generateKubeconfig" \
+          -X 'POST' \
+          -H 'accept: application/json' \
+          -H "cookie: R_PCS=light; R_LOCALE=en-us; R_USERNAME=admin; R_REDIRECTED=true; R_SESS=${TOKEN}" \
+          -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36' \
+          --compressed \
+          --insecure | jq --raw-output ".config" > kubeconfig.yaml
+
+    - name: Obtain KubeConfig stdout
+      debug:
+        msg: "{{ obtain_kubeconfig_result.stdout }}"
+
+    - name: Install Chaos-Mesh
+      register: install_chaos_mesh_result
+      shell: |
+        INSTALLED=$(helm --kubeconfig kubeconfig.yaml list -n chaos-testing | grep chaos-mesh)
+        if [ ! -z "$INSTALLED" ]; then
+          exit 0
+        fi
+
+        helm --kubeconfig kubeconfig.yaml repo add chaos-mesh https://charts.chaos-mesh.org
+        helm --kubeconfig kubeconfig.yaml repo update
+        helm --kubeconfig kubeconfig.yaml install chaos-mesh chaos-mesh/chaos-mesh \
+          --namespace=chaos-testing \
+          --create-namespace \
+          --version 2.6.1 \
+          --set chaosDaemon.runtime=containerd \
+          --set chaosDaemon.socketPath=/run/k3s/containerd/containerd.sock \
+          --set controllerManager.chaosdSecurityMode=false
+    
+    - name: Install Chaos-Mesh stdout
+      debug:
+        msg: "{{ install_chaos_mesh_result.stdout }}"
