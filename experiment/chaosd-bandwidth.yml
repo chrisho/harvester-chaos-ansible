@@ -1,0 +1,32 @@
+---
+- name: chaos-bandwidth
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Network Bandwidth Experiment
+      register: network_bandwidth_experiment_result
+      shell: |
+        kubectl --kubeconfig {{ playbook_dir }}/../kubeconfig.yaml apply -f - << EOF
+        apiVersion: chaos-mesh.org/v1alpha1
+        kind: PhysicalMachineChaos
+        metadata:
+          name: physical-network-bandwidth
+          namespace: chaos-testing
+        spec:
+          action: network-bandwidth
+          mode: all
+          address: 
+          {% for item in harvester_nodes %}
+          - {{ item }}:{{ chaosd_port }}
+          {% endfor %}
+
+          duration: '{{ physical_machine.network_bandwidth.duration }}'
+          network-bandwidth:
+            rate: {{ physical_machine.network_bandwidth.rate }}
+            buffer: {{ physical_machine.network_bandwidth.buffer }}
+            device: {{ physical_machine.network_bandwidth.device }}
+            limit: {{ physical_machine.network_bandwidth.limit }}
+        EOF
+    - name: Check Bandwidth Experiment
+      debug:
+        msg: "{{ network_bandwidth_experiment_result.stdout }}"

@@ -1,0 +1,23 @@
+---
+harvester_nodes:
+  - 192.168.31.161
+  - 192.168.31.162
+  - 192.168.31.163
+harvester_management_url: https://192.168.31.159
+harvester_username: admin
+harvester_password: password1234
+
+chaosd_port: 31767
+
+physical_machine:
+  network_bandwidth:
+    duration: 1h
+    rate: 1mbps
+    buffer: 10000
+    device: enp2s0
+    limit: 10000
+
+  stress_cpu:
+    duration: 1h
+    worker: 18
+    load: 70
