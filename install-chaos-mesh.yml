@@ -2,54 +2,128 @@
 - name: install-chaos-mesh
   hosts: localhost
   connection: local
-  tasks:
-    - name: login
-      register: login_result
+  tasks:    
+    - name: Add Chaos-Mesh Repo
+      register: add_chaos_mesh_result
       shell: |
-        curl '{{ harvester_management_url }}/v3-public/localProviders/local?action=login' \
-          --data-raw '{"description":"UI session","responseType":"json","username":"{{ harvester_username }}","password":"{{ harvester_password }}"}' \
-          --compressed \
-          --insecure | jq --raw-output ".token" > token.txt    
+        COUNT=$(kubectl --kubeconfig kubeconfig.yaml get clusterrepo | grep chaos-mesh | wc -l)
+        if [ $COUNT -gt 0 ]; then
+          echo "Chaos-Mesh Repo has already been added, skip."
+          exit 0
+        fi
 
-    - name: login stdout
-      debug:
-        msg: "{{ login_result.stdout }}"
-
-    - name: Obtain KubeConfig
-      register: obtain_kubeconfig_result
-      shell: |
         TOKEN=$(cat token.txt)
-        echo $TOKEN
-        curl "{{ harvester_management_url }}/v1/management.cattle.io.clusters/local?action=generateKubeconfig" \
-          -X 'POST' \
+        curl '{{ harvester_management_url }}/v1/catalog.cattle.io.clusterrepos' \
           -H 'accept: application/json' \
+          -H 'content-type: application/json' \
           -H "cookie: R_PCS=light; R_LOCALE=en-us; R_USERNAME=admin; R_REDIRECTED=true; R_SESS=${TOKEN}" \
           -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36' \
+          --data-raw '{"type":"catalog.cattle.io.clusterrepo","metadata":{"name":"chaos-mesh"},"spec":{"url":"https://charts.chaos-mesh.org","clientSecret":null}}' \
           --compressed \
-          --insecure | jq --raw-output ".config" > kubeconfig.yaml
+          --insecure
 
-    - name: Obtain KubeConfig stdout
+        # Wait for repo to be active
+        timeout=300
+
+        start_time=$(date +%s)
+        current_time=$(date +%s)
+
+        while [[ $((current_time - start_time)) -lt $timeout ]]; do
+            COUNT=$(kubectl --kubeconfig kubeconfig.yaml -nchaos-testing get clusterrepo chaos-mesh -ojson | jq --raw-output ".status.conditions[].status" | wc -l)
+            if [[ $COUNT -eq 2 ]]; then
+                break;
+            fi
+
+            sleep 5
+            current_time=$(date +%s)
+        done
+
+        if [[ $((current_time - start_time)) -ge $timeout ]]; then
+            echo "Timeout reached."
+            exit 1
+        fi
+
+        sleep 10
+    
+    - name: Add Chaos-Mesh Repo stdout
       debug:
-        msg: "{{ obtain_kubeconfig_result.stdout }}"
+        msg: "{{ add_chaos_mesh_result.stdout }}"
 
     - name: Install Chaos-Mesh
       register: install_chaos_mesh_result
       shell: |
-        INSTALLED=$(helm --kubeconfig kubeconfig.yaml list -n chaos-testing | grep chaos-mesh)
-        if [ ! -z "$INSTALLED" ]; then
+        COUNT=$(kubectl --kubeconfig kubeconfig.yaml -nchaos-testing get apps chaos-mesh| grep chaos-mesh | wc -l)
+        if [ $COUNT -gt 0 ]; then
+          echo "Chaos-Mesh has already been installed, skip."
+        else
+          TOKEN=$(cat token.txt)
+          curl '{{ harvester_management_url }}/v1/catalog.cattle.io.clusterrepos/chaos-mesh?action=install' \
+            -H 'accept: application/json' \
+            -H 'content-type: application/json;charset=UTF-8' \
+            -H "cookie: R_PCS=light; R_LOCALE=en-us; R_USERNAME=admin; R_REDIRECTED=true; R_SESS=${TOKEN}" \
+            -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36' \
+            --data-raw '{"charts":[{"chartName":"chaos-mesh","version":"2.6.1","releaseName":"chaos-mesh","annotations":{"catalog.cattle.io/ui-source-repo-type":"cluster","catalog.cattle.io/ui-source-repo":"chaos-mesh"},"values":{"chaosDaemon":{"runtime":"containerd","socketPath":"/run/k3s/containerd/containerd.sock"},"controllerManager":{"chaosdSecurityMode":false},"global":{"cattle":{"clusterId":"local","clusterName":"local","systemProjectId":"","url":"{{ harvester_management_url }}","rkePathPrefix":"","rkeWindowsPathPrefix":""}}}}],"noHooks":false,"timeout":"600s","wait":true,"namespace":"chaos-testing","projectId":null,"disableOpenAPIValidation":false,"skipCRDs":false}' \
+            --compressed \
+            --insecure
+        fi
+        
+        # Wait for Chaos-Mesh to be deployed
+        timeout=300
+
+        start_time=$(date +%s)
+        current_time=$(date +%s)
+
+        while [[ $((current_time - start_time)) -lt $timeout ]]; do
+            status=$(kubectl --kubeconfig kubeconfig.yaml -nchaos-testing get apps chaos-mesh -ojson | jq --raw-output ".status.summary.state" | awk '{print tolower($0)}')
+
+            if [[ $status == "deployed" ]]; then
+                echo "Chaos-Mesh is deployed."
+                break
+            fi
+
+            sleep 5
+            current_time=$(date +%s)
+        done
+
+        if [[ $((current_time - start_time)) -ge $timeout ]]; then
+            echo "Timeout reached."
+            exit 1
+        fi
+
+    - name: Install Chaos-Mesh Repo stdout
+      debug:
+        msg: "{{ install_chaos_mesh_result.stdout }}"
+
+
+- name: launch-chaosd
+  hosts: harvester
+  remote_user: rancher
+  become: yes
+  become_method: sudo
+  become_flags: 'su - root /bin/bash -c'
+  tasks:
+    - name: script
+      register: script_result
+      shell: |
+        COUNT=$(ps aux | grep chaosd | grep -v grep | wc -l)
+        if [ $COUNT -gt 0 ]; then
+          echo "Chaosd has already been launched, skip."
           exit 0
         fi
 
-        helm --kubeconfig kubeconfig.yaml repo add chaos-mesh https://charts.chaos-mesh.org
-        helm --kubeconfig kubeconfig.yaml repo update
-        helm --kubeconfig kubeconfig.yaml install chaos-mesh chaos-mesh/chaos-mesh \
-          --namespace=chaos-testing \
-          --create-namespace \
-          --version 2.6.1 \
-          --set chaosDaemon.runtime=containerd \
-          --set chaosDaemon.socketPath=/run/k3s/containerd/containerd.sock \
-          --set controllerManager.chaosdSecurityMode=false
-    
-    - name: Install Chaos-Mesh stdout
+        export CHAOSD_VERSION=v1.4.0
+
+        mkdir -p chaosd
+        cd chaosd
+
+        if [ ! -f "$myFile" ]; then
+          curl -fsSLO https://mirrors.chaos-mesh.org/chaosd-$CHAOSD_VERSION-linux-amd64.tar.gz
+        fi
+        
+        tar zxvf chaosd-$CHAOSD_VERSION-linux-amd64.tar.gz && sudo mv chaosd-$CHAOSD_VERSION-linux-amd64 /usr/local/
+        export PATH=/usr/local/chaosd-$CHAOSD_VERSION-linux-amd64:$PATH
+        nohup chaosd server --port {{ chaosd_port }} > chaosd.log 2>&1 &
+      
+    - name: debug
       debug:
-        msg: "{{ install_chaos_mesh_result.stdout }}"
+        msg: "{{ script_result.stdout }}"

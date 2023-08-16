@@ -1,4 +1,5 @@
 kubeconfig.yaml
 token.txt
+hosts
 
 settings.*.yml

@@ -1,9 +1,4 @@
 ---
-harvester_cluster_hosts: "z-support-cluster"
-harvester_nodes:
-  - 192.168.31.161
-  - 192.168.31.162
-  - 192.168.31.163
 harvester_management_url: https://192.168.31.159
 harvester_username: admin
 harvester_password: password1234

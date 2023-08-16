@@ -6,25 +6,4 @@
     - name: Stress CPU Experiment
       register: stress_cpu_experiment_result
       shell: |
-        kubectl --kubeconfig {{ playbook_dir }}/../kubeconfig.yaml delete -f - << EOF
-        apiVersion: chaos-mesh.org/v1alpha1
-        kind: PhysicalMachineChaos
-        metadata:
-          name: physical-stress-cpu
-          namespace: chaos-testing
-        spec:
-          action: stress-cpu
-          mode: all
-          address: 
-          {% for item in harvester_nodes %}
-          - {{ item }}:{{ chaosd_port }}
-          {% endfor %}
-
-          duration: '{{ physical_machine.stress_cpu.duration }}'
-          stress-cpu:
-            workers: {{ physical_machine.stress_cpu.worker }}
-            load: {{ physical_machine.stress_cpu.load }}
-        EOF
-    - name: Check Stress CPU Experiment
-      debug:
-        msg: "{{ stress_cpu_experiment_result.stdout }}"
+        kubectl --kubeconfig {{ playbook_dir }}/../kubeconfig.yaml -nchaos-testing delete PhysicalMachineChaos physical-stress-cpu

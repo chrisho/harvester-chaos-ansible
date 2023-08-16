@@ -1,0 +1,33 @@
+---
+- name: uninstall chaosd
+  hosts: harvester
+  remote_user: rancher
+  become: yes
+  become_method: sudo
+  become_flags: 'su - root /bin/bash -c'
+  tasks:
+    - name: kill chaosd
+      register: kill_chaosd_result
+      shell: |
+        kill -9 $(ps aux | grep chaosd | grep -v grep | awk '{print $2}')
+
+- name: uninstall-chaos-mesh
+  hosts: localhost
+  connection: local
+  tasks:
+  - name: uninstall chaos-mesh
+    register: uninstall_chaos_mesh_result
+    shell: |
+      TOKEN=$(cat token.txt)
+      curl '{{ harvester_management_url }}/v1/catalog.cattle.io.apps/chaos-testing/chaos-mesh?action=uninstall' \
+        -H 'accept: application/json' \
+        -H 'content-type: application/json;charset=UTF-8' \
+        -H "cookie: R_PCS=light; R_LOCALE=en-us; R_USERNAME=admin; R_REDIRECTED=true; R_SESS=${TOKEN}" \
+        -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36' \
+        --data-raw '{}' \
+        --compressed \
+        --insecure
+      kubectl --kubeconfig kubeconfig.yaml -n chaos-testing delete configmap chaos-mesh
+      kubectl --kubeconfig kubeconfig.yaml delete ns chaos-testing
+      kubectl --kubeconfig kubeconfig.yaml delete clusterrepos chaos-mesh
+
