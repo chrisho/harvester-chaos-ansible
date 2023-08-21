@@ -5,11 +5,7 @@
   tasks:
     - name: login
       register: login_result
-      shell: |
-        curl '{{ harvester_management_url }}/v3-public/localProviders/local?action=login' \
-          --data-raw '{"description":"UI session","responseType":"json","username":"{{ harvester_username }}","password":"{{ harvester_password }}"}' \
-          --compressed \
-          --insecure | jq --raw-output ".token" > token.txt    
+      shell: "scripts/prepare_login.sh {{ harvester_management_url }} {{ harvester_username }} {{ harvester_password }}"           
 
     - name: login stdout
       debug:
@@ -17,33 +13,9 @@
 
     - name: Obtain KubeConfig
       register: obtain_kubeconfig_result
-      shell: |
-        TOKEN=$(cat token.txt)
-        curl "{{ harvester_management_url }}/v1/management.cattle.io.clusters/local?action=generateKubeconfig" \
-          -X 'POST' \
-          -H 'accept: application/json' \
-          -H "cookie: R_PCS=light; R_LOCALE=en-us; R_USERNAME=admin; R_REDIRECTED=true; R_SESS=${TOKEN}" \
-          -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36' \
-          --compressed \
-          --insecure | jq --raw-output ".config" > kubeconfig.yaml
+      shell: "scripts/prepare_download_kubeconfig.sh {{ harvester_management_url }}"
+        
 
     - name: Obtain KubeConfig stdout
       debug:
         msg: "{{ obtain_kubeconfig_result.stdout }}"
-
-    - name: Generate Inventory File
-      register: generate_inventory_file_result
-      shell: |
-        NODES_IP=$(kubectl --kubeconfig kubeconfig.yaml get nodes -ojson | jq --raw-output ".items[].status.addresses[0].address")
-        echo "[harvester]" > hosts
-        echo "harvester_nodes:" > settings.nodes.yml
-
-        for ip in $NODES_IP; do
-          echo $ip >> hosts
-          echo "  - $ip" >> settings.nodes.yml
-        done
-
-
-    - name: Generate Inventory File stdout
-      debug:
-        msg: "{{ generate_inventory_file_result.stdout }}"

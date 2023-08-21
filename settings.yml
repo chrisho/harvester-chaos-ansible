@@ -1,10 +1,12 @@
 ---
+# Harvester
 harvester_management_url: https://192.168.31.159
 harvester_username: admin
 harvester_password: password1234
 
 chaosd_port: 31767
 
+# simulation two faults
 physical_machine:
   network_bandwidth:
     duration: 1h

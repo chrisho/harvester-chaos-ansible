@@ -16,7 +16,7 @@
           action: network-bandwidth
           mode: all
           address: 
-          {% for item in harvester_nodes %}
+          {% for item in groups['all'] %}
           - {{ item }}:{{ chaosd_port }}
           {% endfor %}
 
