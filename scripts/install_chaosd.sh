@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-chasod_port=$1
+chaosd_port=$1
 
 COUNT=$(ps aux | grep "chaosd server" | grep -v grep | wc -l)
 if [ $COUNT -gt 0 ]; then
@@ -19,4 +19,4 @@ fi
 
 tar zxvf chaosd-$CHAOSD_VERSION-linux-amd64.tar.gz && sudo mv chaosd-$CHAOSD_VERSION-linux-amd64 /usr/local/
 export PATH=/usr/local/chaosd-$CHAOSD_VERSION-linux-amd64:$PATH
-nohup chaosd server --port $chasod_port > chaosd.log 2>&1 &
+nohup chaosd server --port $chaosd_port > chaosd.log 2>&1 &

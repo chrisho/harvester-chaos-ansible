@@ -19,8 +19,11 @@
           {% for item in groups['all'] %}
           - {{ item }}:{{ chaosd_port }}
           {% endfor %}
-
+          
+          {% if physical_machine.network_bandwidth.duration is defined %}
           duration: '{{ physical_machine.network_bandwidth.duration }}'
+          {% endif %}
+
           network-bandwidth:
             rate: {{ physical_machine.network_bandwidth.rate }}
             buffer: {{ physical_machine.network_bandwidth.buffer }}
