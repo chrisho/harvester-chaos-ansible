@@ -1,0 +1,17 @@
+---  
+- name: launch-chaosd
+  hosts: harvester
+  remote_user: rancher
+  become: yes
+  become_method: sudo
+  become_flags: 'su - root /bin/bash -c'
+  tasks:
+    - name: copy
+      copy:
+        src: scripts/reinstall_chaosd.sh
+        dest: /tmp/reinstall_chaosd.sh
+        mode: 0755
+
+    - name: Launch Chaosd 
+      register: launch_chaosd_result
+      shell: "/tmp/reinstall_chaosd.sh {{ chaosd_port }}"
